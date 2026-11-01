@@ -1,0 +1,18 @@
+# Configuración de ejemplo
+retardo_min = 50
+retardo_max = 300
+semilla = 42
+log = torneo.log
+falla = ninguna
+
+# Orden de las 28 casillas: trono, 2 del triángulo y la grilla 5x5 por filas.
+# Símbolos: . vacía | P puma | D perro
+tablero
+P
+..
+.....
+.....
+...DD
+DDDDD
+DDDDD
+fin_tablero
