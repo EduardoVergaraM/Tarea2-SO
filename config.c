@@ -12,8 +12,7 @@
 
 #define LARGO_LINEA 256
 
-_Static_assert(NUM_CASILLAS > MAX_PERROS,
-               "NUM_CASILLAS debe poder alojar al Puma y a los perros");
+_Static_assert(NUM_CASILLAS > NUM_PERROS, "NUM_CASILLAS debe poder alojar al Puma y a los perros");
 
 /* Claves del config */
 enum {
@@ -201,8 +200,7 @@ static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int 
             case 'D': c = CELDA_PERRO; perros++; break;
             default:
                 if (motivo[0] == '\0')
-                    snprintf(motivo, sizeof motivo,
-                             "carácter '%c' no válido en línea %d", *s, *nlinea);
+                    snprintf(motivo, sizeof motivo, "carácter '%c' no válido en línea %d", *s, *nlinea);
                 continue;
             }
             if (n < NUM_CASILLAS)
@@ -214,19 +212,13 @@ static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int 
     if (!cerrado && motivo[0] == '\0')
         snprintf(motivo, sizeof motivo, "falta 'fin_tablero'");
     if (motivo[0] == '\0' && n != NUM_CASILLAS)
-        snprintf(motivo, sizeof motivo, "se esperaban %d casillas y hay %d",
-                 NUM_CASILLAS, n);
+        snprintf(motivo, sizeof motivo, "se esperaban %d casillas y hay %d",NUM_CASILLAS, n);
     if (motivo[0] == '\0' && pumas != 1)
-        snprintf(motivo, sizeof motivo, "debe haber exactamente 1 Puma (hay %d)",
-                 pumas);
-    if (motivo[0] == '\0' && (perros < 1 || perros > MAX_PERROS))
-        snprintf(motivo, sizeof motivo, "debe haber entre 1 y %d perros (hay %d)",
-                 MAX_PERROS, perros);
-
+        snprintf(motivo, sizeof motivo, "debe haber exactamente 1 Puma (hay %d)", pumas);
+    if (motivo[0] == '\0' && perros != NUM_PERROS)
+        snprintf(motivo, sizeof motivo, "debe haber exactamente %d perros (hay %d)", NUM_PERROS, perros);
     if (motivo[0] != '\0') {
-        registrar(cfg, "aviso",
-                  "bloque 'tablero' inválido (%s); se usa la disposición estándar",
-                  motivo);
+        registrar(cfg, "aviso", "bloque 'tablero' inválido (%s); se usa la disposición estándar", motivo);
         return;
     }
     memcpy(destino, tmp, sizeof tmp);
@@ -249,7 +241,7 @@ void config_defecto(Config *cfg)
     for (int i = 0; i < NUM_CASILLAS; i++)
         cfg->disposicion[i] = CELDA_VACIA;
     cfg->disposicion[0] = CELDA_PUMA;
-    for (int i = NUM_CASILLAS - MAX_PERROS; i < NUM_CASILLAS; i++)
+    for (int i = NUM_CASILLAS - NUM_PERROS; i < NUM_CASILLAS; i++)
         cfg->disposicion[i] = CELDA_PERRO;
 }
 
@@ -267,15 +259,12 @@ void config_cargar(Config *cfg, const char *ruta)
     config_defecto(cfg);
 
     if (ruta == NULL) {
-        registrar(cfg, "info",
-                  "sin archivo de configuración; se usan los valores por defecto");
+        registrar(cfg, "info", "sin archivo de configuración; se usan los valores por defecto");
         return;
     }
     f = fopen(ruta, "r");
     if (f == NULL) {
-        registrar(cfg, "aviso",
-                  "no se pudo abrir '%s' (%s); se usan los valores por defecto",
-                  ruta, strerror(errno));
+        registrar(cfg, "aviso", "no se pudo abrir '%s' (%s); se usan los valores por defecto", ruta, strerror(errno));
         return;
     }
 
@@ -299,8 +288,7 @@ void config_cargar(Config *cfg, const char *ruta)
         if (strcmp(s, "tablero") == 0 || strcmp(s, "tablero:") == 0) {
             if (visto & K_TABLERO) {
                 Celda descarte[NUM_CASILLAS];
-                registrar(cfg, "aviso",
-                          "línea %d: bloque 'tablero' repetido; se ignora", nlinea);
+                registrar(cfg, "aviso", "línea %d: bloque 'tablero' repetido; se ignora", nlinea);
                 leer_tablero(f, cfg, descarte, &nlinea);
             } else {
                 visto |= K_TABLERO;
@@ -311,9 +299,7 @@ void config_cargar(Config *cfg, const char *ruta)
 
         eq = strchr(s, '=');
         if (eq == NULL) {
-            registrar(cfg, "aviso",
-                      "línea %d: se esperaba 'clave = valor' ('%s'); se ignora",
-                      nlinea, s);
+            registrar(cfg, "aviso", "línea %d: se esperaba 'clave = valor' ('%s'); se ignora", nlinea, s);
             continue;
         }
         *eq = '\0';
@@ -324,20 +310,17 @@ void config_cargar(Config *cfg, const char *ruta)
             if (strcmp(clave, CLAVES[i].nombre) == 0)
                 bit = CLAVES[i].bit;
         if (bit == 0 || bit == K_TABLERO) {
-            registrar(cfg, "aviso", "línea %d: clave desconocida o mal usada '%s'; se ignora",
-                      nlinea, clave);
+            registrar(cfg, "aviso", "línea %d: clave desconocida o mal usada '%s'; se ignora", nlinea, clave);
             continue;
         }
         if (visto & bit) {
-            registrar(cfg, "aviso", "línea %d: clave '%s' repetida; se ignora",
-                      nlinea, clave);
+            registrar(cfg, "aviso", "línea %d: clave '%s' repetida; se ignora", nlinea, clave);
             continue;
         }
         visto |= bit;
 
         if (*valor == '\0') {
-            registrar(cfg, "aviso", "línea %d: '%s' sin valor; se usa el valor por defecto",
-                      nlinea, clave);
+            registrar(cfg, "aviso", "línea %d: '%s' sin valor; se usa el valor por defecto", nlinea, clave);
             continue;
         }
 
@@ -346,34 +329,27 @@ void config_cargar(Config *cfg, const char *ruta)
             if (parsear_entero(valor, 1, RETARDO_TOPE_MS, &rmin))
                 rmin_ok = true;
             else
-                registrar(cfg, "aviso", "línea %d: retardo_min inválido ('%s')",
-                          nlinea, valor);
+                registrar(cfg, "aviso", "línea %d: retardo_min inválido ('%s')", nlinea, valor);
             break;
         case K_RMAX:
             if (parsear_entero(valor, 1, RETARDO_TOPE_MS, &rmax))
                 rmax_ok = true;
             else
-                registrar(cfg, "aviso", "línea %d: retardo_max inválido ('%s')",
-                          nlinea, valor);
+                registrar(cfg, "aviso", "línea %d: retardo_max inválido ('%s')", nlinea, valor);
             break;
         case K_SEMILLA:
             if (!parsear_semilla(valor, &cfg->semilla))
-                registrar(cfg, "aviso",
-                          "línea %d: semilla inválida ('%s'); se usa %u",
-                          nlinea, valor, SEMILLA_DEFECTO);
+                registrar(cfg, "aviso", "línea %d: semilla inválida ('%s'); se usa %u", nlinea, valor, SEMILLA_DEFECTO);
             break;
         case K_LOG:
             if (strlen(valor) < sizeof cfg->ruta_log)
                 snprintf(cfg->ruta_log, sizeof cfg->ruta_log, "%s", valor);
             else
-                registrar(cfg, "aviso", "línea %d: ruta de log demasiado larga; se usa '%s'",
-                          nlinea, LOG_DEFECTO);
+                registrar(cfg, "aviso", "línea %d: ruta de log demasiado larga; se usa '%s'", nlinea, LOG_DEFECTO);
             break;
         case K_FALLA:
             if (!parsear_falla(valor, &cfg->falla))
-                registrar(cfg, "aviso",
-                          "línea %d: falla inválida ('%s'); se usa 'ninguna'",
-                          nlinea, valor);
+                registrar(cfg, "aviso", "línea %d: falla inválida ('%s'); se usa 'ninguna'", nlinea, valor);
             break;
         default:
             break;
@@ -386,10 +362,7 @@ void config_cargar(Config *cfg, const char *ruta)
         cfg->retardo_min_ms = (int)rmin;
         cfg->retardo_max_ms = (int)rmax;
     } else if (visto & (K_RMIN | K_RMAX)) {
-        registrar(cfg, "aviso",
-                  "retardos incompletos, inválidos o con mínimo > máximo; "
-                  "se usan %d y %d ms por defecto",
-                  RETARDO_MIN_DEFECTO, RETARDO_MAX_DEFECTO);
+        registrar(cfg, "aviso", "retardos incompletos, inválidos o con mínimo > máximo; " "se usan %d y %d ms por defecto", RETARDO_MIN_DEFECTO, RETARDO_MAX_DEFECTO);
     }
 
     /* Claves ausentes: solo informar */

@@ -5,7 +5,7 @@
 
 /* Tablero: 28 casillas. 0 = trono, 1-2 = triángulo, 3-27 = grilla 5x5 por filas (3 + 5*fila + col) */
 #define NUM_CASILLAS 28
-#define MAX_PERROS   12
+#define NUM_PERROS   12
 
 /* Valores por defecto */
 #define RETARDO_MIN_DEFECTO 50
@@ -24,7 +24,7 @@ typedef enum { CELDA_VACIA = 0, CELDA_PUMA, CELDA_PERRO } Celda;
 /* Jugador que puede fallar */
 typedef enum { ROL_NINGUNO = 0, ROL_PUMA, ROL_PERROS } Rol;
 
-/* Falla simulada: mesa (1, 2, ...), rol y movimiento en que falla. mesa = 0: sin falla */
+/* Falla simulada: mesa, rol y movimiento en que falla. mesa = 0: sin falla */
 typedef struct {
     int mesa;
     Rol rol;
