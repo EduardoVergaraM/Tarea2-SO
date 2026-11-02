@@ -5,8 +5,8 @@ Tarea 2 de Sistemas Operativos. Simulación de un torneo de Komikan en tiempo re
 ## Compilar y ejecutar
 
 ```
-gcc -Wall -Wextra -std=c17 tarea1.c config.c -o torneo
-./torneo N M [config.txt]
+gcc -Wall -Wextra -std=c17 tarea1.c config.c matchmaker.c mesa.c util.c -o torneo
+./torneo 7 2 config_ejemplo.txt
 ```
 
 N es la cantidad de jugadores, M el máximo de mesas simultáneas y `config.txt` es un archivo opcional que puede configurarse previamente para determinar parámetros del juego.
