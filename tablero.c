@@ -158,8 +158,7 @@ int tablero_vecinos(int casilla, int vecinos[MAX_VECINOS]) {
     }
     return count;
 }
-
-int tablero_saltos_desde(int casilla, Jugada out[MAX_JUGADAS]) {
+int tablero_saltos_desde(int casilla, Jugada out[MAX_VECINOS]) {
     int count = 0;
     /* 
      * Implementa la lógica de qué casilla se salta ("sobre") para llegar al "destino".
