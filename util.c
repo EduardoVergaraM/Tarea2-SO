@@ -3,16 +3,6 @@
 #include "util.h"
 
 #include <errno.h>
-<<<<<<< HEAD
-#include <stdarg.h>
-#include <stdio.h>
-#include <time.h>
-
-static struct timespec inicio;
-static int reloj_iniciado = 0;
-
-/* Ms desde el primer uso, donde los hijos de fork lo heredan */
-=======
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -30,19 +20,11 @@ static void iniciar_reloj(void)
 }
 
 /* Ms desde el primer uso; los hijos de fork lo heredan */
->>>>>>> 1ed2762 (Agrega módulo del tablero y log atómico)
 long ms_desde_inicio(void)
 {
     struct timespec ahora;
 
-<<<<<<< HEAD
-    if (!reloj_iniciado) {
-        clock_gettime(CLOCK_MONOTONIC, &inicio);
-        reloj_iniciado = 1;
-    }
-=======
     pthread_once(&reloj_listo, iniciar_reloj);
->>>>>>> 1ed2762 (Agrega módulo del tablero y log atómico)
     clock_gettime(CLOCK_MONOTONIC, &ahora);
     return (long)(ahora.tv_sec - inicio.tv_sec) * 1000L + (ahora.tv_nsec - inicio.tv_nsec) / 1000000L;
 }
@@ -56,19 +38,6 @@ void dormir_ms(int ms)
     while (nanosleep(&ts, &ts) == -1 && errno == EINTR);
 }
 
-<<<<<<< HEAD
-void log_evento(const char *fmt, ...)
-{
-    va_list ap;
-
-    flockfile(stdout); /* una línea completa por hilo */
-    printf("[%6ld ms] ", ms_desde_inicio());
-    va_start(ap, fmt);
-    vprintf(fmt, ap);
-    va_end(ap);
-    putchar('\n');
-    funlockfile(stdout);
-=======
 int log_abrir(const char *ruta)
 {
     ms_desde_inicio(); /* fija el reloj antes de crear procesos o hilos */
@@ -123,5 +92,4 @@ void log_evento(const char *fmt, ...)
     n += m;
     buf[n++] = '\n';
     log_bloque(buf, (size_t)n);
->>>>>>> 1ed2762 (Agrega módulo del tablero y log atómico)
 }
