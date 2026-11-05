@@ -1,4 +1,13 @@
-/* config.c: lectura y validación de config.txt y de los argumentos */
+/* config.c: lectura y validación de config.txt y de los argumentos 
+Este archivo se encarga de leer el archivo de configuración, validar el formato y contenido de este.
+También verifica la disposicioón inicial de las piezas en el tablero
+En caso de que algún paràmetro ingresado sea inválido, al igual que la disposición inicial, se encarga de
+asignar los valores por defecto definidos previamente, además de dar aviso de aquellos elementos que fueron ingresados
+erróneamente.
+
+*/
+
+
 #define _POSIX_C_SOURCE 200809L
 #include "config.h"
 
@@ -10,11 +19,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*Tamaño del buffer para leer las lineas*/
 #define LARGO_LINEA 256
 
+/*Se comprueba al momento de la compilación que exista espacio para los 12 perros y el puma*/
 _Static_assert(NUM_CASILLAS > NUM_PERROS, "NUM_CASILLAS debe poder alojar al Puma y a los perros");
 
-/* Claves del config */
+/* Identificadores para saber qué opciones aparecieron en el archivo. */
 enum {
     K_RMIN    = 1u << 0,
     K_RMAX    = 1u << 1,
@@ -39,14 +50,15 @@ static const struct {
 
 /* Utilidades */
 
-/* Avisa por stderr y guarda el mensaje */
+/* Muestra un aviso y también lo guarda para incluirlo en el log. */
 #if defined(__GNUC__)
 __attribute__((format(printf, 3, 4)))
 #endif
-static void registrar(Config *cfg, const char *nivel, const char *fmt, ...)
-{
-    char texto[LARGO_MENSAJE];
-    va_list ap;
+
+/*Se encarga de registrar una advertencia o información relacionada con la configuración*/
+static void registrar(Config *cfg, const char *nivel, const char *fmt, ...){
+    char texto[LARGO_MENSAJE]; //* Mensaje que se mostrará. */
+    va_list ap; /* Permite recibir distintos datos para el mensaje. */
     int k = snprintf(texto, sizeof texto, "[config] %s: ", nivel);
 
     va_start(ap, fmt);
@@ -60,21 +72,22 @@ static void registrar(Config *cfg, const char *nivel, const char *fmt, ...)
     }
 }
 
-/* Quitar los espacios de los extremos */
-static char *recortar(char *s)
-{
+/* Se encarga de quitar espacios, tabulaciones y saltos de línea al principio y al final */
+static char *recortar(char *s){   
+    /*Con esto logra adelantar el puntero hasta el primer char que no sea espacio*/
     while (isspace((unsigned char)*s))
         s++;
+    /*n comienza como longitud del texto sin espacios iniciales*/
     size_t n = strlen(s);
     while (n > 0 && isspace((unsigned char)s[n - 1]))
         s[--n] = '\0';
     return s;
 }
 
-/* Lee una línea. Si no cabe, la descarta y marca truncada. Devuelve 0 en EOF */
-static int leer_linea(FILE *f, char *buf, size_t n, bool *truncada)
-{
-    *truncada = false;
+/* Lee una línea. Si no cabe, la descarta y marca truncada. Devuelve 0 en EOF o error
+Si la linea es demasiado larga, descarta el exceso para que no cause problemas al considerarse como otra opción de configuración */
+static int leer_linea(FILE *f, char *buf, size_t n, bool *truncada){
+    *truncada = false;/* Al comenzar suponemos que la línea cabe completa. */
     if (fgets(buf, (int)n, f) == NULL)
         return 0;
     if (strchr(buf, '\n') == NULL && !feof(f)) {
@@ -86,11 +99,10 @@ static int leer_linea(FILE *f, char *buf, size_t n, bool *truncada)
     return 1;
 }
 
-/* Entero dentro de [min, max] */
-static bool parsear_entero(const char *s, long min, long max, long *out)
-{
-    char *fin;
-    long v;
+/* Convierte un texto en número y revisa que esté dentro del rango permitido. */
+static bool parsear_entero(const char *s, long min, long max, long *out){
+    char *fin; /* Apunta a donde terminó de leer el número. */
+    long v;/* Número obtenido del texto. */
 
     if (*s == '\0')
         return false;
@@ -102,9 +114,8 @@ static bool parsear_entero(const char *s, long min, long max, long *out)
     return true;
 }
 
-/* Entero sin signo para la semilla */
-static bool parsear_semilla(const char *s, unsigned int *out)
-{
+/* Validar la semilla del generador como un entero sin signo, solo si se actualiza *out retorna true*/
+static bool parsear_semilla(const char *s, unsigned int *out){
     char *fin;
     unsigned long v;
 
@@ -118,13 +129,14 @@ static bool parsear_semilla(const char *s, unsigned int *out)
     return true;
 }
 
-/* "ninguna" o "mesa,rol,movimiento" (rol: puma | perros) */
-static bool parsear_falla(const char *valor, FallaSimulada *out)
-{
-    char copia[LARGO_LINEA];
-    char *c1, *c2;
-    long mesa, mov;
-    Rol rol;
+/* "ninguna" o "mesa,rol,movimiento" (rol: puma | perros) 
+Se encarga de convertir la opción de falla simulada, retorna *out si la opción es válida, false en caso contrario
+*/
+static bool parsear_falla(const char *valor, FallaSimulada *out){
+    char copia[LARGO_LINEA];/* Copia para poder separar el texto sin alterar el original. */
+    char *c1, *c2;/* Posiciones de las dos comas. */
+    long mesa, mov; /* Identificador de mesa y movimiento, antes de validar. */
+    Rol rol; /* ROL_PUMA o ROL_PERROS, según el texto. */
 
     if (strcmp(valor, "ninguna") == 0) {
         out->mesa = 0;
@@ -133,6 +145,8 @@ static bool parsear_falla(const char *valor, FallaSimulada *out)
         return true;
     }
 
+
+    /* Divide la copia en tres subcadenas reemplazando las comas por NUL. */
     snprintf(copia, sizeof copia, "%s", valor);
     c1 = strchr(copia, ',');
     if (c1 == NULL)
@@ -140,9 +154,10 @@ static bool parsear_falla(const char *valor, FallaSimulada *out)
     c2 = strchr(c1 + 1, ',');
     if (c2 == NULL || strchr(c2 + 1, ',') != NULL)
         return false;
-    *c1 = '\0';
-    *c2 = '\0';
+    *c1 = '\0';/* Termina la subcadena 'mesa' */
+    *c2 = '\0';/* Termina la subcadena 'rol' */
 
+    /* Tanto la mesa como el número de movimiento deben ser positivos */
     if (!parsear_entero(recortar(copia), 1, INT_MAX, &mesa) ||
         !parsear_entero(recortar(c2 + 1), 1, INT_MAX, &mov))
         return false;
@@ -163,14 +178,14 @@ static bool parsear_falla(const char *valor, FallaSimulada *out)
     return true;
 }
 
-/* Lee el bloque hasta fin_tablero ('.', 'P', 'D'). Solo se copia si es válido */
-static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int *nlinea)
-{
+/* Lee el bloque tomando "tablero" como el inicio y "fin tablero" como el fin
+las casillas sin fichas se representan como '.' vacío, 'P' Puma y 'D' Perro */
+static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int *nlinea){
     Celda tmp[NUM_CASILLAS] = { CELDA_VACIA };
     char linea[LARGO_LINEA];
-    char motivo[80] = "";
-    bool trunc, cerrado = false;
-    int n = 0, pumas = 0, perros = 0;
+    char motivo[80] = ""; /* Guarda la primera razón de un posible error. */
+    bool trunc, cerrado = false;/* cerrado indica si apareció fin_tablero. */
+    int n = 0, pumas = 0, perros = 0; /* Cuenta casillas y fichas encontradas. */
 
     while (leer_linea(f, linea, sizeof linea, &trunc)) {
         char *h, *s;
@@ -189,6 +204,7 @@ static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int 
             break;
         }
 
+        /* Recorre los símbolos: punto = vacío, P = Puma, D = Perro. */
         for (; *s != '\0'; s++) {
             Celda c;
 
@@ -208,7 +224,7 @@ static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int 
             n++;
         }
     }
-
+    /* Solo se acepta el bloque si todas las comprobaciones pasan. */
     if (!cerrado && motivo[0] == '\0')
         snprintf(motivo, sizeof motivo, "falta 'fin_tablero'");
     if (motivo[0] == '\0' && n != NUM_CASILLAS)
@@ -221,13 +237,13 @@ static void leer_tablero(FILE *f, Config *cfg, Celda destino[NUM_CASILLAS], int 
         registrar(cfg, "aviso", "bloque 'tablero' inválido (%s); se usa la disposición estándar", motivo);
         return;
     }
-    memcpy(destino, tmp, sizeof tmp);
+    memcpy(destino, tmp, sizeof tmp);/* Guarda el tablero validado. */
 }
 
 /* Funciones publicas  */
 
-void config_defecto(Config *cfg)
-{
+/* Prepara la configuración inicial por si no hay archivo o faltan opciones. */
+void config_defecto(Config *cfg){
     memset(cfg, 0, sizeof *cfg);
     cfg->retardo_min_ms = RETARDO_MIN_DEFECTO;
     cfg->retardo_max_ms = RETARDO_MAX_DEFECTO;
@@ -237,7 +253,7 @@ void config_defecto(Config *cfg)
     cfg->falla.movimiento = 0;
     snprintf(cfg->ruta_log, sizeof cfg->ruta_log, "%s", LOG_DEFECTO);
 
-    /* Disposición estándar tomando como supuesto que el puma se encuentra en el trono, perros en las últimas 12 casillas */
+    /* Puma en el trono (casilla 0) y Perros en las últimas 12 casillas. */
     for (int i = 0; i < NUM_CASILLAS; i++)
         cfg->disposicion[i] = CELDA_VACIA;
     cfg->disposicion[0] = CELDA_PUMA;
@@ -245,16 +261,15 @@ void config_defecto(Config *cfg)
         cfg->disposicion[i] = CELDA_PERRO;
 }
 
-/* Carga el config desde ruta; lo inválido o ausente queda con su valor por defecto */
-void config_cargar(Config *cfg, const char *ruta)
-{
+/* Lee el archivo de configuración, revisa cada opción y conserva los valores por defecto cuando una opción falta o tiene un valor incorrecto. */
+void config_cargar(Config *cfg, const char *ruta){
     FILE *f;
     char linea[LARGO_LINEA];
     bool trunc;
     int nlinea = 0;
-    unsigned visto = 0;
+    unsigned visto = 0;/* Marca las opciones ya encontradas */
     long rmin = 0, rmax = 0;
-    bool rmin_ok = false, rmax_ok = false;
+    bool rmin_ok = false, rmax_ok = false;/* Indican si ambos retardos son válidos. */
 
     config_defecto(cfg);
 
@@ -306,6 +321,7 @@ void config_cargar(Config *cfg, const char *ruta)
         clave = recortar(s);
         valor = recortar(eq + 1);
 
+        /* Busca a qué opción corresponde el nombre leído. */
         for (size_t i = 0; i < N_CLAVES; i++)
             if (strcmp(clave, CLAVES[i].nombre) == 0)
                 bit = CLAVES[i].bit;
@@ -324,6 +340,7 @@ void config_cargar(Config *cfg, const char *ruta)
             continue;
         }
 
+        /* Revisa el valor de la opción y lo guarda si corresponde. */
         switch (bit) {
         case K_RMIN:
             if (parsear_entero(valor, 1, RETARDO_TOPE_MS, &rmin))
@@ -357,7 +374,7 @@ void config_cargar(Config *cfg, const char *ruta)
     }
     fclose(f);
 
-    /* Los retardos se aceptan juntos */
+    /* Los dos retardos se actualizan juntos para evitar un rango incorrecto. */
     if (rmin_ok && rmax_ok && rmin <= rmax) {
         cfg->retardo_min_ms = (int)rmin;
         cfg->retardo_max_ms = (int)rmax;
@@ -365,16 +382,16 @@ void config_cargar(Config *cfg, const char *ruta)
         registrar(cfg, "aviso", "retardos incompletos, inválidos o con mínimo > máximo; " "se usan %d y %d ms por defecto", RETARDO_MIN_DEFECTO, RETARDO_MAX_DEFECTO);
     }
 
-    /* Claves ausentes: solo informar */
+    /* Al final avisa qué opciones no aparecieron en el archivo. */
     for (size_t i = 0; i < N_CLAVES; i++)
         if (!(visto & CLAVES[i].bit))
             registrar(cfg, "info", "'%s' no especificado; se usa el valor por defecto",
                       CLAVES[i].nombre);
 }
 
-/* Validar N, M y la ruta opcional del config */
-int config_parsear_args(int argc, char **argv, ParametrosEjecucion *p)
-{
+
+/* Revisa los argumentos al ejecutar el programa: cantidad de jugadores (N), máximo de mesas (M) y la ruta opcional del archivo de configuración. */
+int config_parsear_args(int argc, char **argv, ParametrosEjecucion *p){
     const char *prog = (argc > 0 && argv[0] != NULL) ? argv[0] : "torneo";
     long n = 0, m = 0;
 
@@ -394,9 +411,8 @@ int config_parsear_args(int argc, char **argv, ParametrosEjecucion *p)
     return -1;
 }
 
-/* Letra de una casilla */
-static char simbolo(Celda c)
-{
+/* Devuelve la letra que representa a una ficha o casilla vacía. */
+static char simbolo(Celda c){
     switch (c) {
     case CELDA_PUMA:  return 'P';
     case CELDA_PERRO: return 'D';
@@ -404,9 +420,8 @@ static char simbolo(Celda c)
     }
 }
 
-/* Imprimir la configuración efectiva */
-void config_imprimir(FILE *out, const Config *cfg)
-{
+/* Muestra los valores con los que realmente se ejecutará el torneo. */
+void config_imprimir(FILE *out, const Config *cfg){
     fprintf(out, "[config] configuración efectiva:\n");
     fprintf(out, "  retardo_min = %d ms\n", cfg->retardo_min_ms);
     fprintf(out, "  retardo_max = %d ms\n", cfg->retardo_max_ms);
@@ -425,9 +440,9 @@ void config_imprimir(FILE *out, const Config *cfg)
     fputc('\n', out);
 }
 
-/* Escribe los avisos de la carga (para el log) */
-void config_volcar_mensajes(FILE *out, const Config *cfg)
-{
+
+/* Copia al archivo de log los avisos guardados al leer la configuración. */
+void config_volcar_mensajes(FILE *out, const Config *cfg){
     for (int i = 0; i < cfg->n_mensajes; i++)
         fprintf(out, "%s\n", cfg->mensajes[i]);
 }

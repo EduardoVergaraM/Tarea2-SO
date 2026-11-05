@@ -8,28 +8,27 @@
 
 _Static_assert(NUM_CASILLAS == 28, "la geometría está escrita para 28 casillas");
 
-/*
- * Numeración (igual que config.h): 0 = trono, 1-2 = triángulo, 3 + 5*fila + col = grilla.
- * Posición de cada casilla en el plano de la figura. Sirve para saber qué tres casillas
- * quedan en línea recta (un salto solo es válido a lo largo de una línea del tablero).
- */
+/* Coordenadas de cada casilla para reconocer caminos rectos y saltos posibles.
+La 0 es el trono, 1 y 2 el triángulo, y 3 a 27 forman la cuadrícula. */
 static int px[NUM_CASILLAS], py[NUM_CASILLAS];
 
-static int     vecino[NUM_CASILLAS][MAX_VECINOS];
-static int     n_vecinos[NUM_CASILLAS];
-static Jugada  salto[NUM_CASILLAS][MAX_VECINOS];
-static int     n_saltos[NUM_CASILLAS];
-static pthread_once_t tablas_listas = PTHREAD_ONCE_INIT;
+static int     vecino[NUM_CASILLAS][MAX_VECINOS];  /* Conexiones de cada casilla. */
+static int     n_vecinos[NUM_CASILLAS];       /* Cuántos vecinos tiene cada casilla. */
+static Jugada  salto[NUM_CASILLAS][MAX_VECINOS]; /* Saltos posibles desde cada casilla. */
+static int     n_saltos[NUM_CASILLAS];        /* Cuántos saltos tiene cada casilla. */
+static pthread_once_t tablas_listas = PTHREAD_ONCE_INIT; /* Construir las tablas solo una vez. */
 
-static void unir(int a, int b)
-{
+
+
+/* Conecta dos casillas para que se pueda pasar de una a la otra. */
+static void unir(int a, int b){
     vecino[a][n_vecinos[a]++] = b;
     vecino[b][n_vecinos[b]++] = a;
 }
 
-/* Tablas de adyacencia y de saltos. Se arman una sola vez y después son de solo lectura */
-static void construir_tablas(void)
-{
+/* Prepara las conexiones y saltos permitidos usando la forma del tablero.
+ * Se hace una sola vez, y luego todos los hilos usan estas mismas tablas. */
+static void construir_tablas(void){
     px[0] = 4; py[0] = 0;                      /* trono */
     px[1] = 2; py[1] = 1;                      /* triángulo izquierdo */
     px[2] = 6; py[2] = 1;                      /* triángulo derecho */
@@ -51,7 +50,7 @@ static void construir_tablas(void)
     unir(1, 2); unir(1, 3); unir(1, 4);
     unir(2, 6); unir(2, 7);
 
-    /* Salto a -> c sobre b: a y c vecinos de b, en la misma línea y sentidos opuestos */
+    /* Busca saltos en línea recta: el Puma va de a hasta c pasando sobre b. */
     for (int b = 0; b < NUM_CASILLAS; b++)
         for (int i = 0; i < n_vecinos[b]; i++)
             for (int j = 0; j < n_vecinos[b]; j++) {
@@ -74,23 +73,23 @@ static void construir_tablas(void)
             }
 }
 
-static bool casilla_valida(int c)
-{
+/* Comprueba que el número de casilla esté dentro del tablero. */
+static bool casilla_valida(int c){
     return c >= 0 && c < NUM_CASILLAS;
 }
 
-static bool es_vecino(int a, int b)
-{
+/* Revisa si las casillas a y b están conectadas directamente. */
+static bool es_vecino(int a, int b){
     for (int i = 0; i < n_vecinos[a]; i++)
         if (vecino[a][i] == b)
             return true;
     return false;
 }
 
-/* ---- Bloqueo ordenado: siempre de menor a mayor índice ---- */
+/* Los mutex se toman siempre de menor a mayor casilla para evitar bloqueos cruzados. */
 
-static void ordenar(int *v, int n)
-{
+/* Ordena las casillas que necesitamos bloquear. */
+static void ordenar(int *v, int n){
     for (int i = 1; i < n; i++) {
         int x = v[i], j = i - 1;
         while (j >= 0 && v[j] > x) {
@@ -101,27 +100,29 @@ static void ordenar(int *v, int n)
     }
 }
 
-static void bloquear(Tablero *t, int *cs, int n)
-{
+/* Toma los mutex de las casillas del movimiento. */
+static void bloquear(Tablero *t, int *cs, int n){
     ordenar(cs, n);
     for (int i = 0; i < n; i++)
         pthread_mutex_lock(&t->mtx[cs[i]]);
 }
 
-static void liberar(Tablero *t, const int *cs, int n)
-{
+/* Suelta los mutex que se habían tomado. */
+static void liberar(Tablero *t, const int *cs, int n){
     for (int i = n - 1; i >= 0; i--)
         pthread_mutex_unlock(&t->mtx[cs[i]]);
 }
 
-/* ---- Ciclo de vida ---- */
+/* Preparación y limpieza del tablero. */
 
-int tablero_iniciar(Tablero *t, const Celda disposicion[NUM_CASILLAS])
-{
-    int pumas = 0, perros = 0, creados = 0;
+/* Crea el tablero inicial, asigna las fichas y prepara un mutex por casilla.
+También deja el contador de movimientos en cero. */
+int tablero_iniciar(Tablero *t, const Celda disposicion[NUM_CASILLAS]){
+    int pumas = 0, perros = 0, creados = 0; /* Cuenta las fichas y los mutex creados. */
 
     pthread_once(&tablas_listas, construir_tablas);
     memset(t, 0, sizeof *t);
+    atomic_init(&t->movimientos, 0);
 
     for (int i = 0; i < NUM_CASILLAS; i++) {
         switch (disposicion[i]) {
@@ -145,39 +146,44 @@ int tablero_iniciar(Tablero *t, const Celda disposicion[NUM_CASILLAS])
     return 0;
 }
 
-void tablero_destruir(Tablero *t)
-{
+
+
+/* Libera los mutex cuando la mesa ya terminó y sus hilos dejaron de usarlos. */
+void tablero_destruir(Tablero *t){
     for (int i = 0; i < NUM_CASILLAS; i++)
         pthread_mutex_destroy(&t->mtx[i]);
 }
 
-/* ---- Movimientos concurrentes ---- */
+/* Los movimientos se revisan y aplican usando solo las casillas involucradas. */
 
-ResMov tablero_mover(Tablero *t, int id, int origen, int destino)
-{
-    int cs[2] = { origen, destino };
+/* Intenta mover una ficha a una casilla vecina. Si el movimiento es válido, actualiza el tablero y suma uno al contador. */
+ResMov tablero_mover(Tablero *t, int id, int origen, int destino){
+    int cs[2] = { origen, destino }; /* Casillas que deben quedar bloqueadas. */
     ResMov r;
 
     if (!casilla_valida(origen) || !casilla_valida(destino) || !es_vecino(origen, destino))
         return MOV_ILEGAL;
 
     bloquear(t, cs, 2);
-    if (t->ocupante[origen] != id)
+    if (t->cerrado)
+        r = MOV_CERRADO;
+    else if (t->ocupante[origen] != id)
         r = MOV_ORIGEN_PERDIDO;
     else if (t->ocupante[destino] != OCUP_VACIA)
         r = MOV_DESTINO_OCUPADO;
     else {
         t->ocupante[destino] = id;
         t->ocupante[origen] = OCUP_VACIA;
+        atomic_fetch_add(&t->movimientos, 1);
         r = MOV_OK;
     }
     liberar(t, cs, 2);
     return r;
 }
 
-ResMov tablero_saltar(Tablero *t, int origen, int sobre, int destino, int *capturado)
-{
-    int cs[3] = { origen, sobre, destino };
+/* Intenta un salto del Puma sobre un Perro. Si resulta, retira al Perro, mueve al Puma y suma una captura y un movimiento. */
+ResMov tablero_saltar(Tablero *t, int origen, int sobre, int destino, int *capturado){
+    int cs[3] = { origen, sobre, destino }; /* Origen, perro capturado y destino. */
     bool valido = false;
     ResMov r;
 
@@ -190,7 +196,9 @@ ResMov tablero_saltar(Tablero *t, int origen, int sobre, int destino, int *captu
         return MOV_ILEGAL;
 
     bloquear(t, cs, 3);
-    if (t->ocupante[origen] != OCUP_PUMA)
+    if (t->cerrado)
+        r = MOV_CERRADO;
+    else if (t->ocupante[origen] != OCUP_PUMA)
         r = MOV_ORIGEN_PERDIDO;
     else if (t->ocupante[sobre] < 1)
         r = MOV_SIN_PERRO;
@@ -203,14 +211,15 @@ ResMov tablero_saltar(Tablero *t, int origen, int sobre, int destino, int *captu
         t->ocupante[destino] = OCUP_PUMA;
         t->ocupante[origen] = OCUP_VACIA;
         t->capturas++;
+        atomic_fetch_add(&t->movimientos, 1);
         r = MOV_OK;
     }
     liberar(t, cs, 3);
     return r;
 }
 
-int tablero_foto(Tablero *t, int foto[NUM_CASILLAS])
-{
+/* Copia el tablero sin que se mueva ninguna ficha durante la foto. También devuelve cuántas capturas lleva el Puma. */
+int tablero_foto(Tablero *t, int foto[NUM_CASILLAS]){
     int capturas;
 
     for (int i = 0; i < NUM_CASILLAS; i++)
@@ -222,10 +231,58 @@ int tablero_foto(Tablero *t, int foto[NUM_CASILLAS])
     return capturas;
 }
 
-/* ---- Reglas sobre una foto ---- */
 
-int tablero_vecinos(int casilla, int vecinos[MAX_VECINOS])
-{
+/* Igual que tablero_foto, pero incluye el contador de movimientos correspondiente a esa misma fotografía. */
+int tablero_foto_con_movimientos(Tablero *t, int foto[NUM_CASILLAS], int *movimientos){
+    int capturas;
+    for (int i = 0; i < NUM_CASILLAS; i++)
+        pthread_mutex_lock(&t->mtx[i]);
+    memcpy(foto, t->ocupante, sizeof t->ocupante);
+    capturas = t->capturas;
+    *movimientos = atomic_load(&t->movimientos);
+    for (int i = NUM_CASILLAS - 1; i >= 0; i--)
+        pthread_mutex_unlock(&t->mtx[i]);
+    return capturas;
+}
+
+
+/* El juez toma una foto y comprueba si ganó alguien. Si hubo victoria, cierra el tablero antes de soltar los mutex. */
+Victoria tablero_evaluar_y_cerrar(Tablero *t, int foto[NUM_CASILLAS], int *capturas){
+    Victoria v = VIC_NINGUNA;
+
+    for (int i = 0; i < NUM_CASILLAS; i++)
+        pthread_mutex_lock(&t->mtx[i]);
+    memcpy(foto, t->ocupante, sizeof t->ocupante);
+    *capturas = t->capturas;
+    if (*capturas >= CAPTURAS_VICTORIA)
+        v = VIC_PUMA;
+    else if (tablero_puma_acorralado(foto))
+        v = VIC_PERROS;
+    if (v != VIC_NINGUNA)
+        t->cerrado = true;
+    for (int i = NUM_CASILLAS - 1; i >= 0; i--)
+        pthread_mutex_unlock(&t->mtx[i]);
+    return v;
+}
+
+/* Cierra el tablero sin buscar ganador, por ejemplo por tiempo o abandono.
+Devuelve las capturas y deja una foto del momento del cierre. */
+int tablero_cerrar(Tablero *t, int foto[NUM_CASILLAS]){
+    int capturas;
+
+    for (int i = 0; i < NUM_CASILLAS; i++)
+        pthread_mutex_lock(&t->mtx[i]);
+    memcpy(foto, t->ocupante, sizeof t->ocupante);
+    capturas = t->capturas;
+    t->cerrado = true;
+    for (int i = NUM_CASILLAS - 1; i >= 0; i--)
+        pthread_mutex_unlock(&t->mtx[i]);
+    return capturas;
+}
+
+
+/* Devuelve las casillas vecinas de una posición. */
+int tablero_vecinos(int casilla, int vecinos[MAX_VECINOS]){
     pthread_once(&tablas_listas, construir_tablas);
     if (!casilla_valida(casilla))
         return 0;
@@ -233,8 +290,8 @@ int tablero_vecinos(int casilla, int vecinos[MAX_VECINOS])
     return n_vecinos[casilla];
 }
 
-int tablero_saltos_desde(int casilla, Jugada out[MAX_VECINOS])
-{
+/* Devuelve las rutas de salto que existen desde una casilla. */
+int tablero_saltos_desde(int casilla, Jugada out[MAX_VECINOS]){
     pthread_once(&tablas_listas, construir_tablas);
     if (!casilla_valida(casilla))
         return 0;
@@ -242,16 +299,17 @@ int tablero_saltos_desde(int casilla, Jugada out[MAX_VECINOS])
     return n_saltos[casilla];
 }
 
-int tablero_posicion(const int foto[NUM_CASILLAS], int id)
-{
+/* Busca una ficha por su id dentro de la foto. */
+int tablero_posicion(const int foto[NUM_CASILLAS], int id){
     for (int i = 0; i < NUM_CASILLAS; i++)
         if (foto[i] == id)
             return i;
     return -1;
 }
 
-int tablero_jugadas_puma(const int foto[NUM_CASILLAS], Jugada out[MAX_JUGADAS])
-{
+
+/* Busca todos los movimientos que el puma puede hacer según la foto, osea, pasos a casillas vacías y saltos sobre Perros. */
+int tablero_jugadas_puma(const int foto[NUM_CASILLAS], Jugada out[MAX_JUGADAS]){
     int pos = tablero_posicion(foto, OCUP_PUMA), n = 0;
 
     pthread_once(&tablas_listas, construir_tablas);
@@ -270,8 +328,8 @@ int tablero_jugadas_puma(const int foto[NUM_CASILLAS], Jugada out[MAX_JUGADAS])
     return n;
 }
 
-bool tablero_puma_acorralado(const int foto[NUM_CASILLAS])
-{
+/* Comprueba si el Puma se quedó sin movimientos posibles. */
+bool tablero_puma_acorralado(const int foto[NUM_CASILLAS]){
     Jugada tmp[MAX_JUGADAS];
 
     if (tablero_posicion(foto, OCUP_PUMA) < 0)
@@ -279,10 +337,10 @@ bool tablero_puma_acorralado(const int foto[NUM_CASILLAS])
     return tablero_jugadas_puma(foto, tmp) == 0;
 }
 
-bool tablero_verificar(const Tablero *t, const int foto[NUM_CASILLAS], int capturas)
-{
+/* Revisa que la foto tenga un puma, perros sin repetir y la cantidad de perros esperada después de las capturas. */
+bool tablero_verificar(const Tablero *t, const int foto[NUM_CASILLAS], int capturas){
     int pumas = 0, perros = 0;
-    unsigned visto = 0;
+    unsigned visto = 0;/* Marca los ids de Perros que ya aparecieron. */
 
     for (int i = 0; i < NUM_CASILLAS; i++) {
         int o = foto[i];
@@ -301,17 +359,15 @@ bool tablero_verificar(const Tablero *t, const int foto[NUM_CASILLAS], int captu
     return pumas == 1 && perros == t->n_perros - capturas;
 }
 
-/* ---- Log ---- */
-
-static char simbolo(int ocupante)
-{
+/* Convierte el contenido de una casilla en P, D o punto. */
+static char simbolo(int ocupante){
     if (ocupante == OCUP_VACIA) return '.';
     if (ocupante == OCUP_PUMA)  return 'P';
     return 'D';
 }
 
-int tablero_formatear(const int f[NUM_CASILLAS], char *buf, size_t n)
-{
+/* Arma el dibujo del tablero en un texto. */
+int tablero_formatear(const int f[NUM_CASILLAS], char *buf, size_t n){
     #define S(i) simbolo(f[i])
     return snprintf(buf, n,
         "        %c\n"
@@ -330,8 +386,8 @@ int tablero_formatear(const int f[NUM_CASILLAS], char *buf, size_t n)
     #undef S
 }
 
-void tablero_log(int mesa_id, const char *evento, const int foto[NUM_CASILLAS])
-{
+/* Agrega el nombre del evento y el tiempo, y escribe el tablero en el log. */
+void tablero_log(int mesa_id, const char *evento, const int foto[NUM_CASILLAS]){
     char buf[512];
     int n = snprintf(buf, sizeof buf, "[%6ld ms] [mesa %d] %.200s\n",
                      ms_desde_inicio(), mesa_id, evento);

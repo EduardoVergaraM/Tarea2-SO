@@ -1,5 +1,4 @@
-/* Pruebas del tablero.
- * gcc -Wall -Wextra -std=c17 -pthread test_tablero.c tablero.c util.c -o test_tablero && ./test_tablero */
+/* Pruebas del tablero.*/
 #define _POSIX_C_SOURCE 200809L
 #include "tablero.h"
 #include "util.h"
@@ -138,6 +137,61 @@ static void prueba_reglas(void)
     tablero_destruir(&t);
 }
 
+/* ---------- 2b. Cierre del tablero ---------- */
+static void prueba_cierre(void)
+{
+    Celda d[NUM_CASILLAS];
+    Tablero t;
+    int foto[NUM_CASILLAS], foto2[NUM_CASILLAS], c = -1;
+
+    printf("2b. Cierre del tablero\n");
+
+    /* Sin victoria no se cierra y los movimientos siguen funcionando */
+    disposicion_estandar(d);
+    CHECK(tablero_iniciar(&t, d) == 0, "iniciar");
+    CHECK(tablero_evaluar_y_cerrar(&t, foto, &c) == VIC_NINGUNA && c == 0, "sin victoria al inicio");
+    CHECK(tablero_mover(&t, OCUP_PUMA, 0, 5) == MOV_OK, "sigue abierto tras evaluar sin victoria");
+    /* cerrar a mano: nada se aplica y la foto no cambia */
+    tablero_cerrar(&t, foto);
+    CHECK(tablero_mover(&t, OCUP_PUMA, 5, 0) == MOV_CERRADO, "mover tras cerrar");
+    CHECK(tablero_saltar(&t, 5, 10, 15, NULL) == MOV_CERRADO, "saltar tras cerrar");
+    CHECK(tablero_mover(&t, 1, 16, 11) == MOV_CERRADO, "perro tras cerrar");
+    tablero_foto(&t, foto2);
+    CHECK(memcmp(foto, foto2, sizeof foto) == 0, "el tablero cerrado no cambia");
+    CHECK(tablero_cerrar(&t, foto2) == 0, "cerrar dos veces es inocuo");
+    tablero_destruir(&t);
+
+    /* Puma acorralado: veredicto de los Perros y cierre en el mismo paso */
+    for (int i = 0; i < NUM_CASILLAS; i++)
+        d[i] = CELDA_VACIA;
+    d[0] = CELDA_PUMA;
+    d[1] = d[2] = d[5] = CELDA_PERRO;
+    d[3] = d[7] = d[10] = CELDA_PERRO;
+    tablero_iniciar(&t, d);
+    CHECK(tablero_evaluar_y_cerrar(&t, foto, &c) == VIC_PERROS, "acorralado: ganan los perros");
+    CHECK(tablero_mover(&t, 1, 3, 8) == MOV_CERRADO, "un perro no puede soltar al puma tras el veredicto");
+    tablero_foto(&t, foto2);
+    CHECK(memcmp(foto, foto2, sizeof foto) == 0, "el tablero queda como en el veredicto");
+    tablero_destruir(&t);
+
+    /* Seis capturas encadenadas: veredicto del Puma */
+    for (int i = 0; i < NUM_CASILLAS; i++)
+        d[i] = CELDA_VACIA;
+    d[3] = CELDA_PUMA;
+    d[4] = d[10] = d[16] = d[20] = d[22] = d[26] = CELDA_PERRO;
+    tablero_iniciar(&t, d);
+    CHECK(tablero_saltar(&t, 3, 4, 5, NULL) == MOV_OK, "captura 1");
+    CHECK(tablero_saltar(&t, 5, 10, 15, NULL) == MOV_OK, "captura 2");
+    CHECK(tablero_saltar(&t, 15, 16, 17, NULL) == MOV_OK, "captura 3");
+    CHECK(tablero_saltar(&t, 17, 22, 27, NULL) == MOV_OK, "captura 4");
+    CHECK(tablero_saltar(&t, 27, 26, 25, NULL) == MOV_OK, "captura 5");
+    CHECK(tablero_evaluar_y_cerrar(&t, foto, &c) == VIC_NINGUNA && c == 5, "con 5 capturas aún no hay victoria");
+    CHECK(tablero_saltar(&t, 25, 20, 15, NULL) == MOV_OK, "captura 6");
+    CHECK(tablero_evaluar_y_cerrar(&t, foto, &c) == VIC_PUMA && c == 6, "con 6 capturas gana el Puma");
+    CHECK(tablero_mover(&t, OCUP_PUMA, 15, 10) == MOV_CERRADO, "el Puma no se mueve tras ganar");
+    tablero_destruir(&t);
+}
+
 /* ---------- 3. Carrera: 4 perros pelean por la misma casilla ---------- */
 typedef struct {
     Tablero *t;
@@ -217,8 +271,8 @@ static void *hilo_perro(void *arg)
         f->intentos++;
         if (r == MOV_OK)
             f->pos = d;
-        else if (r == MOV_ORIGEN_PERDIDO)
-            break;                           /* me capturaron: el hilo termina solo */
+        else if (r == MOV_ORIGEN_PERDIDO || r == MOV_CERRADO)
+            break;                           /* me capturaron o la partida terminó: el hilo termina solo */
         dormir_us(rand_r(&f->rng) % 300);
     }
     return NULL;
@@ -234,17 +288,19 @@ static void *hilo_puma(void *arg)
         tablero_foto(f->t, foto);
         int n = tablero_jugadas_puma(foto, js);
 
-        if (n == 0) {                        /* acorralado: ganan los perros */
-            atomic_store(f->fin, true);
-            break;
+        if (n == 0) {                        /* sin movimientos: el Juez declara el acorralamiento */
+            dormir_us(rand_r(&f->rng) % 300);
+            continue;
         }
         Jugada j = js[rand_r(&f->rng) % (unsigned)n];
         ResMov r = (j.sobre < 0) ? tablero_mover(f->t, OCUP_PUMA, j.origen, j.destino)
                                  : tablero_saltar(f->t, j.origen, j.sobre, j.destino, NULL);
 
+        if (r == MOV_CERRADO)
+            break;                           /* la partida terminó */
         f->intentos++;
-        if (r == MOV_OK && j.sobre >= 0 && ++f->capturas >= CAPTURAS_VICTORIA)
-            atomic_store(f->fin, true);
+        if (r == MOV_OK && j.sobre >= 0)
+            f->capturas++;                   /* la victoria la declara el Juez, como en mesa.c */
         dormir_us(rand_r(&f->rng) % 300);
     }
     return NULL;
@@ -260,6 +316,7 @@ static void prueba_estres(void)
     int foto[NUM_CASILLAS], mal = 0;
     long fotos = 0, total = 0;
     int partidas = 0, pumas = 0, perros = 0;
+    int foto_v[NUM_CASILLAS], c_v = 0;
 
     printf("4. Estrés (50 partidas con 13 hilos + juez)\n");
     for (int p = 0; p < 50; p++) {
@@ -277,16 +334,24 @@ static void prueba_estres(void)
 
         /* Juez: foto consistente + invariantes + condiciones de victoria */
         long t0 = ms_desde_inicio();
-        while (!atomic_load(&fin) && ms_desde_inicio() - t0 < 3000) {
-            int c = tablero_foto(&t, foto);
+        Victoria v = VIC_NINGUNA;
 
+        while (!atomic_load(&fin) && ms_desde_inicio() - t0 < 3000) {
+            int c;
+
+            v = tablero_evaluar_y_cerrar(&t, foto, &c);   /* veredicto y cierre en un solo paso */
             fotos++;
             if (!tablero_verificar(&t, foto, c))
                 mal++;
-            if (c >= CAPTURAS_VICTORIA || tablero_puma_acorralado(foto))
+            if (v != VIC_NINGUNA) {
+                memcpy(foto_v, foto, sizeof foto);
+                c_v = c;
                 atomic_store(&fin, true);
+            }
             dormir_us(500);
         }
+        if (v == VIC_NINGUNA)
+            c_v = tablero_cerrar(&t, foto_v);             /* sin veredicto (tiempo): se congela igual */
         atomic_store(&fin, true);
         for (int k = 0; k <= NUM_PERROS; k++) {
             pthread_join(th[k], NULL);
@@ -295,8 +360,10 @@ static void prueba_estres(void)
         int c = tablero_foto(&t, foto);
         if (!tablero_verificar(&t, foto, c) || c != f[0].capturas)
             mal++;
-        pumas += c >= CAPTURAS_VICTORIA;
-        perros += tablero_puma_acorralado(foto);
+        if (c != c_v || memcmp(foto, foto_v, sizeof foto) != 0)
+            mal++;                                       /* el tablero final debe ser el del veredicto */
+        pumas += v == VIC_PUMA;
+        perros += v == VIC_PERROS;
         partidas++;
         tablero_destruir(&t);
     }
@@ -310,6 +377,7 @@ int main(void)
 {
     prueba_geometria();
     prueba_reglas();
+    prueba_cierre();
     prueba_carrera();
     prueba_estres();
     printf(fallos == 0 ? "\nTODO OK\n" : "\n%d FALLO(S)\n", fallos);
