@@ -2,7 +2,7 @@
 
 Tarea 2 de Sistemas Operativos. Simula el Komikan, un juego tradicional de estrategia mapuche, el cual enfrenta un puma con un grupo de 12 perros. EL puma intenta capturarlos, mientras que los perros deben rodearlo e impedir que se siga moviendo. EL tablero tiene 28 casillas conectadas y en la disposición inicial de este proyecto participan 1 puma y 12 perros.
 
-Las fichas pueden avanzar a una casilla vecina ue esté libre. Además, el puma puede capturar a un perro saltando sobre él en linea recta, siempre que la casilla de llegada esté desocupada. Los perros no realizan capturas, esto, porque su objetivo es acorralar o bloquear al puma, Las condiciones de victoria implementadas son la siguientes:
+Las fichas pueden avanzar a una casilla vecina que esté libre. Además, el puma puede capturar a un perro saltando sobre él en linea recta, siempre que la casilla de llegada esté desocupada. Los perros no realizan capturas, esto, porque su objetivo es acorralar o bloquear al puma, Las condiciones de victoria implementadas son la siguientes:
 - Gana el puma si consigue capturar 6 o más perros.
 - Ganan los perros si acorralan al puma y lo dejan sin movimientos posibles.
 
