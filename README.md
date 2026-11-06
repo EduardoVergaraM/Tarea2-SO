@@ -1,15 +1,28 @@
 # Torneo de Komikan Concurrente
 
-Tarea 2 de Sistemas Operativos. Simulación de un torneo de Komikan en tiempo real: un Matchmaker empareja jugadores simulados y crea un proceso por partida (mesa), y dentro de cada mesa las fichas compiten como hilos por las casillas del tablero.
+Tarea 2 de Sistemas Operativos. Simula el Komikan, un juego tradicional de estrategia mapuche, el cual enfrenta un puma con un grupo de 12 perros. EL puma intenta capturarlos, mientras que los perros deben rodearlo e impedir que se siga moviendo. EL tablero tiene 28 casillas conectadas y en la disposición inicial de este proyecto participan 1 puma y 12 perros.
+
+Las fichas pueden avanzar a una casilla vecina ue esté libre. Además, el puma puede capturar a un perro saltando sobre él en linea recta, siempre que la casilla de llegada esté desocupada. Los perros no realizan capturas, esto, porque su objetivo es acorralar o bloquear al puma, Las condiciones de victoria implementadas son la siguientes:
+- Gana el puma si consigue capturar 6 o más perros.
+- Ganan los perros si acorralan al puma y lo dejan sin movimientos posibles.
+
+Este proyecto simula un torneo de Komikan en tiempo real, sin turnos fijos: un Matchmaker empareja jugadores simulados y crea un proceso por partida (mesa). Dentro de cada mesa, las fichas se ejecutan como hilos que compiten por las casillas del tablero, mientras un juez revisa el estado del juego y determina cuándo termina la partida.
 
 ## Compilar y ejecutar
 
 ```
-gcc -Wall -Wextra -std=c17 tarea1.c config.c matchmaker.c mesa.c util.c -o torneo
-./torneo 7 2 config_ejemplo.txt
+gcc -Wall -Wextra -std=c17 -pthread tarea1.c config.c matchmaker.c mesa.c tablero.c util.c -o torneo
 ```
 
-N es la cantidad de jugadores, M el máximo de mesas simultáneas y `config.txt` es un archivo opcional que puede configurarse previamente para determinar parámetros del juego.
+```
+./torneo N M config_ejemplo.txt
+```
+
+N es la cantidad de jugadores, M el máximo de mesas simultáneas y `config.txt` es un archivo opcional que puede configurarse previamente para determinar parámetros del juego. A continuación un ejemplo de como se puede modificar la ejecución del programa
+
+```
+./torneo 7 2 config_ejemplo.txt
+```
 
 ## Cómo configurar `config.txt`
 
@@ -28,7 +41,7 @@ El archivo `config.txt` tiene 6 parámetros modificables, de estos, 5 se encuent
 
 ### Bloque `tablero`
 
-Empieza con una línea `tablero` y termina con `fin_tablero`. Dentro van las 28 casillas en orden: el trono, los 2 nodos del triángulo y la parte baja del tablero (cuadrado de 5×5). Se usa `.` para una casilla vacía, `P` para el Puma y `D` para un perro. Debe haber exactamente 1 Puma y entre 1 y 12 perros. Los espacios y saltos de línea se ignoran.
+Empieza con una línea `tablero` y termina con `fin_tablero`. Dentro van las 28 casillas en orden: el trono, los 2 nodos del triángulo y la parte baja del tablero (cuadrado de 5×5). Se usa `.` para una casilla vacía, `P` para el Puma y `D` para un perro. Debe haber exactamente 1 Puma y 12 perros. Los espacios y saltos de línea se ignoran.
 
 ### Ejemplo
 
@@ -53,3 +66,22 @@ fin_tablero
 ### Valores inválidos
 
 Si una clave falta, está vacía o es inválida, se usa su valor por defecto y se avisa por pantalla. Los dos retardos se validan juntos, es decir, si uno de los valores ingresados es incorrecto, se aplican los valores por defecto a ambos parámetros. El tablero se acepta completo o se reemplaza por el estándar.
+
+## Archivos del proyecto
+
+| Archivo | Qué contiene |
+|---|---|
+| `tarea1.c` | Punto de entrada del programa: recibe los argumentos, carga la configuración y ejecuta el Matchmaker. |
+| `config.c` | Lee y valida el archivo de configuración, y aplica los valores por defecto cuando corresponde. |
+| `config.h` | Define los parámetros, tipos y funciones utilizados para configurar el torneo. |
+| `matchmaker.c` | Simula la llegada de jugadores, forma las parejas, administra las mesas simultáneas y gestiona la interrupción con `Ctrl+C`. |
+| `matchmaker.h` | Declara la función que inicia y administra el torneo. |
+| `mesa.c` | Ejecuta una partida al crear los hilos de las fichas, coordinar al Juez y preparar el resultado final. |
+| `mesa.h` | Define los resultados y motivos de término de las partidas, además de las funciones de la mesa. |
+| `tablero.c` | Implementa las reglas de movimiento, las capturas, las fotografías del tablero y la sincronización de las casillas. |
+| `tablero.h` | Define las estructuras, constantes y funciones que utiliza el tablero. |
+| `util.c` | Contiene funciones auxiliares para los tiempos de espera y los mensajes de la terminal y del log. |
+| `util.h` | Declara las funciones auxiliares usadas en distintas partes del programa. |
+| `test_tablero.c` | Incluye pruebas de las reglas del tablero y de los movimientos simultáneos entre hilos. |
+| `config_ejemplo.txt` | Archivo de ejemplo con los parámetros y la disposición inicial del tablero. |
+| `README.md` | Explica el funcionamiento general, la ejecución y la configuración del proyecto. |
