@@ -30,6 +30,27 @@ Aquí se coordinan los movimientos de las fichas, las victorias y el cierre de l
 /* Bandera para avisar al Juez de una interrupción. */
 static volatile sig_atomic_t mesa_interrumpida = 0;
 
+/* SIGTERM solo avisa al Juez, el cierre se hace fuera del manejador. */
+static void manejar_sigterm(int sig){
+    (void)sig;
+    mesa_interrumpida = 1;
+}
+
+/* El Matchmaker prepara cada hijo antes de comenzar la partida. */
+int mesa_preparar_senales(void){
+    struct sigaction sa = {0};
+
+    sa.sa_handler = SIG_IGN; /* Ctrl+C lo administra el matchmaker. */
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) == -1)
+        return -1;
+
+    sa.sa_handler = manejar_sigterm;
+    if (sigaction(SIGTERM, &sa, NULL) == -1)
+        return -1;
+    return 0;
+}
+
 /* Convierte el rol en un nombre para mostrarlo en los mensajes. */
 const char *texto_rol(Rol r)
 {
@@ -349,6 +370,13 @@ int mesa_ejecutar(const Config *cfg, int mesa_id, int id_puma, int id_perros, in
     /* foto: tablero copiado, n_fichas: total, creados: hilos que alcanzaron a iniciarse. */
     bool error = false;            /* Indica si falló la creación de algún hilo. */
     ssize_t w;                     /* Bytes enviados al Matchmaker. */
+    sigset_t solo_juez;
+
+    /* Los hilos de las fichas heredan SIGTERM bloqueada, la recibe el juez. */
+    sigemptyset(&solo_juez);
+    sigaddset(&solo_juez, SIGTERM);
+    if (pthread_sigmask(SIG_BLOCK, &solo_juez, NULL) != 0)
+        return -1;
 
     memset(&m, 0, sizeof m);
     m.id = mesa_id;
@@ -391,6 +419,9 @@ int mesa_ejecutar(const Config *cfg, int mesa_id, int id_puma, int id_perros, in
         }
         creados++;
     }
+
+    /* El hilo principal vuelve a recibir SIGTERM. */
+    pthread_sigmask(SIG_UNBLOCK, &solo_juez, NULL);
 
     /* El juez arbitra hasta que haya un resultado */
     if (error) {

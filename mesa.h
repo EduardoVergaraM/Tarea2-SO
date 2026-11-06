@@ -3,6 +3,9 @@
 
 #include "config.h"
 
+/* Prepara las señales del proceso hijo antes de iniciar los hilos. */
+int mesa_preparar_senales(void);
+
 /* Por qué terminó la partida */
 typedef enum {
     MOTIVO_NINGUNO = 0,
