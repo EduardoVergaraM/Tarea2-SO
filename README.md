@@ -1,8 +1,8 @@
 # Torneo de Komikan Concurrente
 
-Tarea 2 de Sistemas Operativos. Simula el Komikan, un juego tradicional de estrategia mapuche, el cual enfrenta un puma con un grupo de 12 perros. El puma intenta capturarlos, mientras que los perros deben rodearlo e impedir que se siga moviendo. EL tablero tiene 28 casillas conectadas y en la disposición inicial de este proyecto participan 1 puma y 12 perros.
+Tarea 2 de Sistemas Operativos. Simula el Komikan, un juego tradicional de estrategia mapuche, el cual enfrenta un puma con un grupo de 12 perros. El puma intenta capturarlos, mientras que los perros deben rodearlo e impedir que se siga moviendo. El tablero tiene 28 casillas conectadas y en la disposición inicial de este proyecto participan 1 puma y 12 perros.
 
-Las fichas pueden avanzar a una casilla vecina que esté libre. Además, el puma puede capturar a un perro saltando sobre él en linea recta, siempre que la casilla de llegada esté desocupada. Los perros no realizan capturas, esto, porque su objetivo es acorralar o bloquear al puma, Las condiciones de victoria implementadas son la siguientes:
+Las fichas pueden avanzar a una casilla vecina que esté libre. Además, el puma puede capturar a un perro saltando sobre él en línea recta, siempre que la casilla de llegada esté desocupada. Los perros no realizan capturas porque su objetivo es acorralar o bloquear al puma. Las condiciones de victoria implementadas son las siguientes:
 - Gana el puma si consigue capturar 6 o más perros.
 - Ganan los perros si acorralan al puma y lo dejan sin movimientos posibles.
 
@@ -18,7 +18,7 @@ gcc -Wall -Wextra -std=c17 -pthread tarea1.c config.c matchmaker.c mesa.c tabler
 ./torneo N M config_ejemplo.txt
 ```
 
-N es la cantidad de jugadores, M el máximo de mesas simultáneas y `config.txt` es un archivo opcional que puede configurarse previamente para determinar parámetros del juego. A continuación un ejemplo de como se puede modificar la ejecución del programa
+N es la cantidad de jugadores, M el máximo de mesas simultáneas y `config.txt` es un archivo opcional que puede configurarse previamente para determinar parámetros del juego. A continuación, un ejemplo de cómo se puede modificar la ejecución del programa:
 
 ```
 ./torneo 7 2 config_ejemplo.txt
@@ -26,22 +26,20 @@ N es la cantidad de jugadores, M el máximo de mesas simultáneas y `config.txt`
 
 ## Cómo configurar `config.txt`
 
-El archivo `config.txt` tiene 6 parámetros modificables, de estos, 5 se encuentran representados en una línea como un par clave-valor, mientras que el tablero se encuentra representado como un bloque. Lo que sigue a un `#` es un comentario y las líneas vacías se ignoran.  
+El archivo `config.txt` tiene 6 parámetros modificables; de estos, 5 se encuentran representados en una línea como un par clave-valor, mientras que el tablero se encuentra representado como un bloque. Lo que sigue a un `#` es un comentario y las líneas vacías se ignoran.
 
 | Clave | Qué define | Por defecto |
 |---|---|---|
 | `retardo_min` | Retardo mínimo entre movimientos de una ficha, en ms (entero de 1 a 60000) | 50 |
 | `retardo_max` | Retardo máximo, en ms (no puede ser menor que `retardo_min`) | 300 |
-| `semilla` | Con la misma semilla, cada ficha repite la misma secuencia de retardos (el orden de los movimientos entre fichas puede variar)| 42 |
+| `semilla` | Con la misma semilla, cada ficha repite la misma secuencia de retardos (el orden de los movimientos entre fichas puede variar) | 42 |
 | `log` | Archivo donde se registran las partidas | `torneo.log` |
-| `falla` | Falla simulada de un jugador: `ninguna`, o `mesa,rol,movimiento`. Mesa, indica el número de mesa que va a fallar, rol indica quien presentará la falla (`puma` o `perros`) y movimiento indica desde que jugada se provocará la falla.| `ninguna` |
-| `tablero` | Disposición inicial de las fichas (bloque, ver más abajo) | Puma en el trono y 12 perros en las últimas 12 casillas |
-
-
+| `falla` | Falla simulada de un jugador: `ninguna`, o `mesa,rol,movimiento`. Mesa indica el número de mesa que va a fallar, rol indica quién presentará la falla (`puma` o `perros`) y movimiento indica desde qué jugada se provocará la falla. | `ninguna` |
+| `tablero` | Disposición inicial de las fichas (bloque, ver más abajo) | puma en el trono y 12 perros en las últimas 12 casillas |
 
 ### Bloque `tablero`
 
-Empieza con una línea `tablero` y termina con `fin_tablero`. Dentro van las 28 casillas en orden: el trono, los 2 nodos del triángulo y la parte baja del tablero (cuadrado de 5×5). Se usa `.` para una casilla vacía, `P` para el Puma y `D` para un perro. Debe haber exactamente 1 Puma y 12 perros. Los espacios y saltos de línea se ignoran.
+Empieza con una línea `tablero` y termina con `fin_tablero`. Dentro van las 28 casillas en orden: el trono, los 2 nodos del triángulo y la parte baja del tablero (cuadrado de 5×5). Se usa `.` para una casilla vacía, `P` para el puma y `D` para un perro. Debe haber exactamente 1 puma y 12 perros. Los espacios y saltos de línea se ignoran.
 
 ### Ejemplo
 
@@ -76,7 +74,7 @@ Si una clave falta, está vacía o es inválida, se usa su valor por defecto y s
 | `config.h` | Define los parámetros, tipos y funciones utilizados para configurar el torneo. |
 | `matchmaker.c` | Simula la llegada de jugadores, forma las parejas, administra las mesas simultáneas y gestiona la interrupción con `Ctrl+C`. |
 | `matchmaker.h` | Declara la función que inicia y administra el torneo. |
-| `mesa.c` | Ejecuta una partida al crear los hilos de las fichas, coordinar al Juez y preparar el resultado final. |
+| `mesa.c` | Ejecuta una partida al crear los hilos de las fichas, coordinar al juez y preparar el resultado final. |
 | `mesa.h` | Define los resultados y motivos de término de las partidas, además de las funciones de la mesa. |
 | `tablero.c` | Implementa las reglas de movimiento, las capturas, las fotografías del tablero y la sincronización de las casillas. |
 | `tablero.h` | Define las estructuras, constantes y funciones que utiliza el tablero. |
